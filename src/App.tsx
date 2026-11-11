@@ -25,6 +25,7 @@ import {
   LogOut,
   ChevronRight,
   Info,
+  Globe,
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { initAuth, googleSignIn, logout, getCachedAccessToken } from './services/auth';
@@ -40,6 +41,7 @@ import { SheetsConnectModal } from './components/SheetsConnectModal';
 import { ConfirmationDialog } from './components/ConfirmationDialog';
 import { WorkflowResultCard, WorkflowResultData } from './components/WorkflowResultCard';
 import { RequestHistoryTable } from './components/RequestHistoryTable';
+import { NetlifyGuideModal } from './components/NetlifyGuideModal';
 
 // Ensure any stale logs from previous sessions are wiped immediately
 try {
@@ -56,6 +58,10 @@ export default function App() {
   const [sheetConfig, setSheetConfig] = useState<SheetConfig | null>(getSavedSheetConfig());
   const [isSheetModalOpen, setIsSheetModalOpen] = useState(false);
   const [autoSyncSheet, setAutoSyncSheet] = useState(true);
+
+  // Netlify & GitHub deployment guide modal
+  const [isNetlifyModalOpen, setIsNetlifyModalOpen] = useState(false);
+  const [isDomainError, setIsDomainError] = useState(false);
 
   // Form inputs
   const [employeeName, setEmployeeName] = useState('');
@@ -144,7 +150,16 @@ export default function App() {
         }
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to authenticate with Google.');
+      if (
+        err.code === 'auth/unauthorized-domain' ||
+        err.message?.includes('unauthorized-domain') ||
+        err.message?.includes('unauthorized domain')
+      ) {
+        setIsDomainError(true);
+        setIsNetlifyModalOpen(true);
+      } else {
+        setErrorMessage(err.message || 'Failed to authenticate with Google.');
+      }
     } finally {
       setIsSigningIn(false);
     }
@@ -184,10 +199,17 @@ export default function App() {
 
       setCurrentStep(2); // Extraction step
 
-      const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to process request through workflow.');
+        const errorData = await response.json().catch(() => null);
+        const errText =
+          errorData?.error ||
+          (response.status === 404
+            ? 'Workflow endpoint not found. If deployed on Netlify, please ensure netlify/functions is configured with GEMINI_API_KEY. Click "Netlify Guide" above for instructions.'
+            : 'Failed to process request through workflow.');
+        throw new Error(errText);
       }
+
+      const data = await response.json();
 
       setCurrentStep(3); // JS Rule evaluation
 
@@ -340,6 +362,19 @@ export default function App() {
                 <span>Connect Google Sheet</span>
               </button>
             )}
+
+            {/* Netlify Guide Help Button */}
+            <button
+              onClick={() => {
+                setIsDomainError(false);
+                setIsNetlifyModalOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-medium border border-slate-700 transition-colors cursor-pointer"
+              title="Deployment guide for GitHub and Netlify"
+            >
+              <Globe className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="hidden sm:inline">Netlify Guide</span>
+            </button>
 
             {/* Google Auth Status */}
             {currentUser ? (
@@ -905,6 +940,16 @@ export default function App() {
         isProcessing={isAppendingRow}
         onConfirm={handleConfirmSheetAppend}
         onCancel={() => setPendingSheetRow(null)}
+      />
+
+      {/* Netlify & GitHub Deployment Guide Modal */}
+      <NetlifyGuideModal
+        isOpen={isNetlifyModalOpen}
+        onClose={() => {
+          setIsNetlifyModalOpen(false);
+          setIsDomainError(false);
+        }}
+        isDomainError={isDomainError}
       />
     </div>
   );

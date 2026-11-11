@@ -42,7 +42,16 @@ export const SheetsConnectModal: React.FC<Props> = ({
       return;
     }
 
-    const sheetId = parseSpreadsheetId(sheetInput);
+    const parsed = parseSpreadsheetId(sheetInput);
+    if (parsed.isGoogleDoc) {
+      setStatusMessage({
+        type: 'error',
+        text: 'Notice: You entered a Google Docs document link. Office Request Desk saves data to Google Sheets (with tabs: Leave, Expense, IT Support, Other). Switch to the "Create New Sheet" tab above to generate a spreadsheet with one click, or paste a Google Sheets link.',
+      });
+      return;
+    }
+
+    const sheetId = parsed.id;
     if (!sheetId) {
       setStatusMessage({ type: 'error', text: 'Please enter a valid Google Sheet URL or ID.' });
       return;
@@ -66,9 +75,13 @@ export const SheetsConnectModal: React.FC<Props> = ({
         onClose();
       }, 1200);
     } catch (err: any) {
+      let errorText = err.message || 'Failed to verify spreadsheet.';
+      if (errorText.includes('403') || errorText.includes('Permission')) {
+        errorText += ' Make sure the signed-in Google account has Edit access to this spreadsheet.';
+      }
       setStatusMessage({
         type: 'error',
-        text: err.message || 'Failed to verify spreadsheet. Ensure your Google account has edit access.',
+        text: errorText,
       });
     } finally {
       setIsProcessing(false);
